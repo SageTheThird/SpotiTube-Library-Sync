@@ -33,9 +33,9 @@ Replace the SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET variables with your Spot
 
 Replace the YOUTUBE_CLIENT_SECRET_FILE variable with the path to your YouTube API credentials JSON file. This JSON file can be obtained by following the instructions below.
 
-Usage :rocket:
+ :rocket:
 Set up a Spotify app and obtain the Client ID:
-Go to the Spotify Developer Dashboard.
+## Go to the Spotify Developer Dashboard.
 
 Log in with your Spotify account or create a new account.
 
@@ -49,7 +49,7 @@ Replace the SPOTIFY_CLIENT_ID variable with your Spotify app's Client ID.
 
 Replace the SPOTIFY_CLIENT_SECRET variable with your Spotify app's Client Secret.
 
-Obtain YouTube API credentials:
+## Obtain YouTube API credentials:
 Go to the Google Cloud Console.
 
 Create a new project or select an existing project.
@@ -84,5 +84,5 @@ Follow the prompts and authorize the required permissions.
 
 The script will automatically retrieve your Spotify playlist and merge it with your YouTube playlist. :notes::arrows_counterclockwise::tv:
 
-Contributing :raised_hands:
+#Contributing :raised_hands:
 Contributions are welcome! If you have any improvements, bug fixes, or new features, feel free to open a pull request. :sparkles:
