@@ -1,5 +1,8 @@
+<<<<<<< Updated upstream
 markdown
 Copy code
+=======
+>>>>>>> Stashed changes
 # Spotify Playlist Automation :musical_note::cd::musical_note:
 
 This project automates the management of Spotify playlists and synchronizes them with YouTube. :robot::musical_note::tv:
@@ -16,7 +19,11 @@ Before using this code, make sure you have the following:
 
 1. Clone this repository to your local machine:
    ```bash
+<<<<<<< Updated upstream
    git clone https://github.com/your-username/Spotify-Playlist-Automation.git
+=======
+  https://github.com/Hasnainzxc/Spotify-Playlist-Automation.git
+>>>>>>> Stashed changes
 Navigate to the project directory:
 
 bash
@@ -48,7 +55,10 @@ Contributions are welcome! If you have any improvements, bug fixes, or new featu
 License :page_with_curl:
 This project is licensed under the MIT License. :scroll:
 
+<<<<<<< Updated upstream
 vbnet
 Copy code
 
 Feel free to copy and paste this content into your README.md file on GitHub. 
+=======
+>>>>>>> Stashed changes
