@@ -9,12 +9,12 @@ Before using this code, make sure you have the following:
 ## Installation :computer:
 
 1. Clone this repository to your local machine:
-   ```bash
+   ```bash https://github.com/Hasnainzxc/Spotify-Playlist-Automation.git
 <<<<<<< Updated upstream
    git clone https://github.com/your-username/Spotify-Playlist-Automation.git
 =======
   https://github.com/Hasnainzxc/Spotify-Playlist-Automation.git
->>>>>>> Stashed changes
+
 Navigate to the project directory:
 
 bash
@@ -96,7 +96,3 @@ vbnet
 Copy code
 
 Feel free to copy and paste this content into your README.md file on GitHub. 
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> c9c2b0145561b341d5c640009670d4f680616209
