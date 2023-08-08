@@ -1,10 +1,4 @@
-<<<<<<< HEAD
 
-# Spotify Playlist Automation :musical_note::cd::musical_note:
-
-This project automates the management of Spotify playlists and synchronizes them with YouTube. :robot::musical_note::tv:
-
-## Prerequisites :memo
 
 Before using this code, make sure you have the following:
 
