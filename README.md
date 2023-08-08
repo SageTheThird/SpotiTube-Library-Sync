@@ -1,11 +1,5 @@
 <<<<<<< HEAD
-<<<<<<< Updated upstream
-markdown
-Copy code
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> c9c2b0145561b341d5c640009670d4f680616209
+
 # Spotify Playlist Automation :musical_note::cd::musical_note:
 
 This project automates the management of Spotify playlists and synchronizes them with YouTube. :robot::musical_note::tv:
