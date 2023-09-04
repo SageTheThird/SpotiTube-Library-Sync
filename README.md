@@ -9,7 +9,8 @@ Before using this code, make sure you have the following:
 ## Installation :computer:
 
 1. Clone this repository to your local machine:
-   ```bash https://github.com/Hasnainzxc/Spotify-Playlist-Automation.git
+   ```bash
+   https://github.com/Hasnainzxc/Spotify-Playlist-Automation.git
 
   
 
