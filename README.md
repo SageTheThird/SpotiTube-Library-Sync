@@ -10,9 +10,7 @@ Before using this code, make sure you have the following:
 
 1. Clone this repository to your local machine:
    ```bash https://github.com/Hasnainzxc/Spotify-Playlist-Automation.git
-<<<<<<< Updated upstream
-   git clone https://github.com/your-username/Spotify-Playlist-Automation.git
-=======
+
   https://github.com/Hasnainzxc/Spotify-Playlist-Automation.git
 
 Navigate to the project directory:
