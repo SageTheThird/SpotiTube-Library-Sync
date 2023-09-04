@@ -11,7 +11,6 @@ Before using this code, make sure you have the following:
 1. Clone this repository to your local machine:
    ```bash
    https://github.com/Hasnainzxc/Spotify-Playlist-Automation.git
-
   
 
 Navigate to the project directory:
@@ -90,8 +89,6 @@ Contributions are welcome! If you have any improvements, bug fixes, or new featu
 License :page_with_curl:
 This project is licensed under the MIT License. :scroll:
 
-<<<<<<< Updated upstream
-vbnet
-Copy code
+
 
 Feel free to copy and paste this content into your README.md file on GitHub. 
