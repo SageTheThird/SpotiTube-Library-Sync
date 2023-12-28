@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 
 
 Before using this code, make sure you have the following:
@@ -92,3 +93,7 @@ This project is licensed under the MIT License. :scroll:
 
 
 Feel free to copy and paste this content into your README.md file on GitHub. 
+=======
+# SpotiTube-Library-Sync
+SpotiTube-Library-Sync is a tool designed to bridge your YouTube and Spotify experiences. It enables users to transfer their liked songs from YouTube to their Spotify library, ensuring their favorite tracks are always within reach, regardless of the platform.
+>>>>>>> 1ba67293915c643219bb01515db372701e75559d
