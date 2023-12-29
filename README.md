@@ -49,6 +49,71 @@ These instructions will get you a copy of the project up and running on your loc
    ```bash
    python main.py
    ```
+---
+
+## Features
+
+### OAuth Caching Mechanism
+
+This tool employs OAuth caching for both YouTube and Spotify, ensuring a seamless user experience with minimal authentication hassle.
+
+#### Spotify OAuth Caching
+
+- **User Authentication**: The user authenticates with Spotify once. This process grants the application access to the user's Spotify account to perform actions on their behalf.
+- **Token Storage**: Post-authentication, the access tokens are stored locally.
+- **Automatic Token Refresh**: When the access token expires, the application automatically refreshes it using the stored refresh token. This process happens in the background, and the user is not required to re-authenticate unless the refresh token itself expires or becomes invalid.
+
+#### YouTube OAuth Caching
+
+- **Initial Authentication**: Similar to Spotify, the user logs into their Google account once to allow access to their YouTube data.
+- **Token Storage and Refresh**: The application stores the Google OAuth tokens and handles their refresh automatically, mirroring the Spotify OAuth mechanism.
+
+#### Configuration for OAuth Caching
+
+- **Spotify**: The `.spotify_cache` file is created after initial authentication and stores the necessary tokens.
+- **YouTube**: The `token.json` file stores Google OAuth tokens and is created after the user first logs into their Google account.
+
+#### Troubleshooting
+
+- **OAuth Issues**: If there are issues with authentication or token refresh, consider re-authenticating by logging in again. Delete the `.spotify_cache` or `token.json` files to force re-authentication.
+
+### Caching Mechanism for API Calls
+
+SpotiTube-Library-Sync implements a robust caching system to enhance efficiency and prevent hitting API rate limits. The caching mechanism involves three key cache stores:
+
+1. **Spotify Search Cache (`spotify_already_searched_cache.json`)**:
+   - Caches the results of Spotify track searches.
+   - Reduces the number of API calls made to Spotify by storing the search results of previously queried tracks.
+   - Format: JSON file storing track names and their corresponding Spotify track IDs.
+
+2. **Spotify Already Added Songs Cache (`spotify_already_liked_cache.json`)**:
+   - Tracks which songs have already been added to the user's Spotify Liked Songs.
+   - Prevents redundant additions to Spotify, reducing unnecessary API requests.
+   - Format: JSON file storing a list of Spotify track IDs that have been added to Liked Songs.
+
+3. **YouTube Liked Songs Cache (`yt_liked_cache.csv`)**:
+   - Stores a list of liked songs fetched from YouTube Music.
+   - The cache is updated with each execution to reflect the latest liked songs from YouTube Music.
+   - Format: CSV file containing titles of liked songs.
+
+#### How Caching Improves Efficiency
+
+- **Minimizes API Calls**: By storing previous search results and tracks statuses, the number of API calls made during each synchronization process is significantly reduced.
+- **Reduces Risk of Hitting Quotas**: Frequent API calls can lead to hitting the rate limits imposed by Spotify and YouTube. Caching effectively lowers the risk of reaching these limits.
+- **Speeds Up Synchronization**: Retrieving data from local cache is faster than making API calls, thus speeding up the synchronization process.
+
+#### Usage and Configuration
+
+All the cache stores's names are stored in config.py. 
+
+#### Configuration for Caching
+
+- The cache files are automatically created and managed by the script.
+- Users can clear the cache manually if needed by deleting the respective `.json` or `.csv` files.
+
+#### Troubleshooting
+
+- **Caching Issues**: If you suspect caching-related problems (e.g., outdated data), try clearing the cache by deleting the cache files.
 
 ## Setting Up the Chrome Extension
 
@@ -67,7 +132,7 @@ These instructions will get you a copy of the project up and running on your loc
 
 1. **Create a Batch File:**
 
-   There's already a run.bat file, you can take hints from that on how to run it.
+   There's already a run.bat file in root, you can take hints from that on how to run it.
 
 2. **Use Windows Task Scheduler:**
 
