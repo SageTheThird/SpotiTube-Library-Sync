@@ -1,0 +1,5 @@
+@echo off
+cd /d D:\path-to-project
+"path-topython\python.exe" main.py > output.txt 2>&1
+start /b cmd /c "powershell Get-Content output.txt -Wait"
+pause

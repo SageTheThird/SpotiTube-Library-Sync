@@ -7,3 +7,6 @@ spotify_already_liked_cache.json
 spotify_already_searched_cache.json
 yt_liked_cache.csv
 __pycache__
+output.txt
+run.bat
+token.json
