@@ -1,0 +1,106 @@
+body {
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #ffff;
+  margin: 0;
+  padding: 20px;
+  width: 350px;
+}
+
+.container {
+  max-width: 600px;
+  margin: 0 auto;
+  text-align: start;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.logo {
+  width: 48px;
+  height: 48px;
+  margin-right: 10px;
+}
+
+h2 {
+  font-size: 20px;
+  color: #333;
+  margin: 0;
+}
+
+.sync-button {
+  background-color: #4caf50;
+  color: white;
+  padding: 12px 25px;
+  font-size: 13px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  display: inline-block;
+}
+
+.sync-button:hover {
+  background-color: #369c39;
+}
+
+.log {
+  margin-top: 20px;
+  text-align: left;
+  background-color: white;
+  border: 1px solid #ddd;
+  padding: 10px;
+  border-radius: 5px;
+  box-shadow: 0px 2px 5px rgba(0, 0, 0, 0.1);
+  color: #333;
+  font-size: 14px;
+}
+
+.log p {
+  margin: 5px 0;
+}
+
+.info {
+  margin-bottom: 20px;
+  color: #555;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  border-top: 4px solid #3498db;
+  width: 20px;
+  height: 20px;
+  -webkit-animation: spin 2s linear infinite; /* Safari */
+  animation: spin 2s linear infinite;
+  vertical-align: middle;
+  margin-left: 10px;
+  display: none; /* Hide spinner by default */
+}
+
+.spinner.visible {
+  display: inline-block; /* Show spinner when this class is added */
+}
+
+/* Safari */
+@-webkit-keyframes spin {
+  0% {
+    -webkit-transform: rotate(0deg);
+  }
+  100% {
+    -webkit-transform: rotate(360deg);
+  }
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
