@@ -1,6 +1,8 @@
-google-auth-oauthlib==0.4.6
-google-auth==1.30.0
-google-api-python-client==2.4.0
-spotipy==2.19.0
-Flask
-flask-cors
+flask==3.1.2
+flask-cors==6.0.1
+google-api-python-client==2.198.0
+google-auth==2.56.2
+google-auth-oauthlib==1.4.0
+python-dotenv==1.2.1
+python-Levenshtein==0.27.3
+spotipy==2.26.0

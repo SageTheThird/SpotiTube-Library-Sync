@@ -5,6 +5,9 @@
 secrets.json
 spotify_already_liked_cache.json
 spotify_already_searched_cache.json
+spotify_import_plan.json
+spotify_import_plan.json.tmp
+yt_to_spotify_sync.json
 yt_liked_cache.csv
 __pycache__
 output.txt

@@ -1,154 +1,255 @@
-# SpotiTube-Library-Sync
+# BeatBridge
 
-SpotiTube-Library-Sync is a Python-based tool that automates the synchronization of liked songs from YouTube Music to Spotify. It also includes a Chrome extension for easy control and monitoring of the synchronization process.
+Sync liked music between YouTube Music and Spotify.
 
-## Getting Started
+The maintained flow is a two-phase process in both directions: first build a
+resumable plan, then apply only the pending entries from that plan. The plan and
+sync caches make interrupted runs safe to resume and avoid copying songs back to
+the service they originally came from.
 
-These instructions will get you a copy of the project up and running on your local machine for development and testing purposes.
+## Project Layout
 
-### Prerequisites
+```text
+beatbridge/          Maintained Python package and CLI implementation
+data/auth/           Local OAuth secrets and token caches, ignored by Git
+data/cache/spotify/  Spotify search and liked-track caches, ignored by Git
+data/cache/youtube/  YouTube search caches, ignored by Git
+data/plans/          Resumable sync plans, ignored by Git
+data/sync/           Cross-direction sync history, ignored by Git
+data/exports/        CSV exports from YouTube/Spotify, ignored by Git
+data/logs/           Local script logs, ignored by Git
+data/archive/        Migrated old runtime files, ignored by Git
+legacy/              Old all-in-one script kept for reference
+scripts/             Local helper scripts/templates
+web/extension/       Chrome extension launcher
+web/static/          Static OAuth callback pages
+main.py              Compatibility CLI wrapper
+main-spot-to-yt.py   Compatibility Spotify-to-YouTube wrapper
+```
 
-- Python 3.x
-- Pip (Python package manager)
-- A Spotify Developer account
-- A Google Cloud Platform account with YouTube Data API v3 enabled
+## Setup
 
-### Installing
+Install dependencies:
 
-1. **Clone the Repository:**
+```powershell
+python -m pip install -r requirements.txt
+```
 
-   ```bash
-   git clone https://github.com/SageTheThird/SpotiTube-Library-Sync.git
-   cd SpotiTube-Library-Sync
-   ```
+Copy `.example.env` to `.env` and fill in your Spotify app credentials:
 
-2. **Install Required Python Libraries:**
+```text
+SPOTIFY_CLIENT_ID=
+SPOTIFY_CLIENT_SECRET=
+SPOTIFY_REDIRECT_URI=http://127.0.0.1:8080/
+SPOTIFY_MATCH_SCORE_THRESHOLD=0.55
+SPOTIFY_ADD_BATCH_SIZE=20
+SPOTIFY_SEARCH_WORKERS=2
+YOUTUBE_SEARCH_WORKERS=1
+YOUTUBE_MATCH_SCORE_THRESHOLD=0.65
+```
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+Put your Google OAuth client file at `data/auth/secrets.json`. YouTube auth
+stores its local token at `data/auth/token.json`. Spotify auth stores its local
+cache at `data/auth/spotify_cache`.
 
-3. **Environment Variables:**
+For Spotify local OAuth, add this exact redirect URI in the Spotify developer
+dashboard:
 
-   Create a `.env` file in the project root directory and populate it with the following variables:
+```text
+http://127.0.0.1:8080/
+```
 
-   ```plaintext
-   SPOTIFY_CLIENT_ID=your_spotify_client_id
-   SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
-   SPOTIFY_REDIRECT_URI=http://localhost:8080/callback
-   ```
+You can override local state locations in `.env`:
 
-   Replace `your_spotify_client_id` and `your_spotify_client_secret` with your Spotify API credentials.
+```text
+BEATBRIDGE_DATA_DIR=data
+YOUTUBE_CLIENT_SECRET_FILE=data/auth/secrets.json
+YOUTUBE_TOKEN_FILE=data/auth/token.json
+SPOTIFY_AUTH_CACHE_FILE=data/auth/spotify_cache
+```
 
-4. **YouTube API Credentials:**
+## Discord Notifications
 
-   Download your `secrets.json` file from Google Cloud Console and place it in the project root directory.
+Set `DISCORD_WEBHOOK_URL` in `.env` to send one compact summary when a sync or
+saved-plan apply finishes:
 
-5. **Run the Application:**
+```text
+DISCORD_WEBHOOK_URL=
+NOTIFY_ON_PLAN_ONLY=false
+```
 
-   ```bash
-   python main.py
-   ```
----
+Auth checks do not send notifications. Plan-only runs also stay quiet by
+default so scheduled `plan-only` plus `apply-plan` flows only notify once, after
+the apply step.
 
-## Features
+## Commands
 
-### OAuth Caching Mechanism
+Validate cached auth for unattended runs:
 
-This tool employs OAuth caching for both YouTube and Spotify, ensuring a seamless user experience with minimal authentication hassle.
+```powershell
+python main.py --check-auth --no-browser
+```
 
-#### Spotify OAuth Caching
+Build a YouTube-to-Spotify import plan without adding anything:
 
-- **User Authentication**: The user authenticates with Spotify once. This process grants the application access to the user's Spotify account to perform actions on their behalf.
-- **Token Storage**: Post-authentication, the access tokens are stored locally.
-- **Automatic Token Refresh**: When the access token expires, the application automatically refreshes it using the stored refresh token. This process happens in the background, and the user is not required to re-authenticate unless the refresh token itself expires or becomes invalid.
+```powershell
+python main.py --direction yt-to-spotify --plan-only
+```
 
-#### YouTube OAuth Caching
+Build a smaller diagnostic plan:
 
-- **Initial Authentication**: Similar to Spotify, the user logs into their Google account once to allow access to their YouTube data.
-- **Token Storage and Refresh**: The application stores the Google OAuth tokens and handles their refresh automatically, mirroring the Spotify OAuth mechanism.
+```powershell
+python main.py --direction yt-to-spotify --limit 25 --plan-only
+```
 
-#### Configuration for OAuth Caching
+Inspect/apply the saved plan:
 
-- **Spotify**: The `.spotify_cache` file is created after initial authentication and stores the necessary tokens.
-- **YouTube**: The `token.json` file stores Google OAuth tokens and is created after the user first logs into their Google account.
+```powershell
+python main.py --apply-plan --dry-run
+python main.py --apply-plan
+```
 
-#### Troubleshooting
+Build a Spotify-to-YouTube plan without liking anything:
 
-- **OAuth Issues**: If there are issues with authentication or token refresh, consider re-authenticating by logging in again. Delete the `.spotify_cache` or `token.json` files to force re-authentication.
+```powershell
+python main.py --direction spotify-to-yt --plan-only
+```
 
-### Caching Mechanism for API Calls
+Build a smaller Spotify-to-YouTube diagnostic plan:
 
-SpotiTube-Library-Sync implements a robust caching system to enhance efficiency and prevent hitting API rate limits. The caching mechanism involves three key cache stores:
+```powershell
+python main.py --direction spotify-to-yt --limit 25 --plan-only
+```
 
-1. **Spotify Search Cache (`spotify_already_searched_cache.json`)**:
-   - Caches the results of Spotify track searches.
-   - Reduces the number of API calls made to Spotify by storing the search results of previously queried tracks.
-   - Format: JSON file storing track names and their corresponding Spotify track IDs.
+Inspect/apply the Spotify-to-YouTube plan:
 
-2. **Spotify Already Added Songs Cache (`spotify_already_liked_cache.json`)**:
-   - Tracks which songs have already been added to the user's Spotify Liked Songs.
-   - Prevents redundant additions to Spotify, reducing unnecessary API requests.
-   - Format: JSON file storing a list of Spotify track IDs that have been added to Liked Songs.
+```powershell
+python main.py --direction spotify-to-yt --apply-plan --dry-run
+python main.py --direction spotify-to-yt --apply-plan
+```
 
-3. **YouTube Liked Songs Cache (`yt_liked_cache.csv`)**:
-   - Stores a list of liked songs fetched from YouTube Music.
-   - The cache is updated with each execution to reflect the latest liked songs from YouTube Music.
-   - Format: CSV file containing titles of liked songs.
+`main-spot-to-yt.py` is only a compatibility wrapper around:
 
-#### How Caching Improves Efficiency
+```powershell
+python main.py --direction spotify-to-yt
+```
 
-- **Minimizes API Calls**: By storing previous search results and tracks statuses, the number of API calls made during each synchronization process is significantly reduced.
-- **Reduces Risk of Hitting Quotas**: Frequent API calls can lead to hitting the rate limits imposed by Spotify and YouTube. Caching effectively lowers the risk of reaching these limits.
-- **Speeds Up Synchronization**: Retrieving data from local cache is faster than making API calls, thus speeding up the synchronization process.
+## YouTube To Spotify
 
-#### Usage and Configuration
+The planner fetches liked YouTube videos, extracts title/artist hints, searches
+Spotify, and writes `data/plans/yt_to_spotify_plan.json`.
 
-All the cache stores's names are stored in config.py. 
+It avoids unnecessary work by skipping:
 
-#### Configuration for Caching
+- YouTube videos already recorded in `data/sync/yt_to_spotify_sync.json`
+- YouTube videos copied from Spotify in `data/sync/spotify_to_yt_sync.json`
+- duplicate title/artist candidates in the same run
+- tracks already in the local liked cache
+- tracks Spotify reports as already saved
+- duplicate Spotify track IDs produced by different YouTube matches
 
-- The cache files are automatically created and managed by the script.
-- Users can clear the cache manually if needed by deleting the respective `.json` or `.csv` files.
+Spotify search queries use multiple forms, from most specific to broad fallback:
 
-#### Troubleshooting
+- raw YouTube title
+- `track:"Song Title" artist:"Artist Name"`
+- `Song Title Artist Name`
+- cleaned title
+- title only
 
-- **Caching Issues**: If you suspect caching-related problems (e.g., outdated data), try clearing the cache by deleting the cache files.
+The search cache is loaded once during planning and saved once, avoiding repeated
+rewrites. It lives at `data/cache/spotify/search_queries.jsonl`.
 
-## Setting Up the Chrome Extension
+`--apply-plan` reads `data/plans/yt_to_spotify_plan.json` and adds only pending
+tracks. Each successful batch updates:
 
-1. **Load the Extension in Chrome:**
+- `data/plans/yt_to_spotify_plan.json`
+- `data/sync/yt_to_spotify_sync.json`
+- `data/cache/spotify/liked_track_ids.json`
 
-   - Open Chrome and navigate to `chrome://extensions/`
-   - Enable "Developer mode"
-   - Click "Load unpacked" and select the `chrome_extension` folder within the project
+## Spotify To YouTube
 
-2. **Running the Extension:**
+The Spotify-to-YouTube planner fetches Spotify liked songs, searches YouTube,
+scores candidate videos, and writes `data/plans/spotify_to_youtube_plan.json`.
 
-   - Click the extension icon in Chrome to open the popup
-   - Click "Sync Liked Songs" to start the synchronization process
+It avoids unnecessary work by skipping:
 
-## Running the Backend Server in Background (Windows)
+- Spotify tracks already recorded in `data/sync/spotify_to_yt_sync.json`
+- Spotify tracks copied from YouTube in `data/sync/yt_to_spotify_sync.json`
+- duplicate title/artist candidates in the same run
+- duplicate YouTube video IDs produced by different Spotify matches
 
-1. **Create a Batch File:**
+That second skip is important: a song copied from YouTube to Spotify should not
+be copied straight back to YouTube later.
 
-   There's already a run.bat file in root, you can take hints from that on how to run it.
+YouTube search queries use multiple forms:
 
-2. **Use Windows Task Scheduler:**
+- `Song Title Artist official audio`
+- `Song Title Artist official video`
+- `"Song Title" "Artist"`
+- `Song Title All Artists`
+- title only
 
-   - Create a new task to run the batch file at system startup.
+`--direction spotify-to-yt --apply-plan` reads
+`data/plans/spotify_to_youtube_plan.json` and likes only pending YouTube videos.
+Each successful like updates:
 
-## Usage
+- `data/plans/spotify_to_youtube_plan.json`
+- `data/sync/spotify_to_yt_sync.json`
 
-- The script fetches liked songs from YouTube Music and adds them to your Spotify Liked Songs.
-- Use the Chrome extension to start the synchronization process and view the log.
+## Scheduled Runs
 
-## Configuration
+For a daily or twice-daily task, run auth preflight first and disable browser
+prompts:
 
-- **Spotify**: Set up a Spotify Developer account and create an application to obtain `client_id` and `client_secret`.
-- **YouTube**: Enable the YouTube Data API v3 in Google Cloud Console and download the credentials file.
+```powershell
+python main.py --check-auth --no-browser
+python main.py --direction yt-to-spotify --plan-only --no-browser
+python main.py --direction yt-to-spotify --apply-plan --no-browser
+python main.py --direction spotify-to-yt --plan-only --no-browser
+python main.py --direction spotify-to-yt --apply-plan --no-browser
+```
 
-## Troubleshooting
+If `--check-auth --no-browser` fails, run the same command without
+`--no-browser` once from an interactive shell to refresh OAuth tokens.
 
-- **Ensure all environment variables are set correctly.**
-- **Check the API limits for Spotify and YouTube if encountering rate limit errors.**
+## Runtime Files
+
+Everything under `data/auth/`, `data/cache/`, `data/plans/`, `data/sync/`,
+`data/exports/`, `data/logs/`, and `data/archive/` is local runtime state and
+ignored by Git. Legacy root-level runtime filenames are also ignored so older
+runs do not get checked in accidentally.
+
+Search caches are stored as JSONL, with one query per line:
+
+```text
+data/cache/spotify/search_queries.jsonl
+data/cache/youtube/search_queries.jsonl
+```
+
+Each cached result is compacted to the fields the matcher actually uses. That
+keeps the cache inspectable and avoids storing full API response blobs.
+
+To migrate old cache files without losing anything, run:
+
+```powershell
+python scripts/migrate_cache_layout.py
+```
+
+The migration writes the new cache files and moves old cache files into
+`data/archive/cache-layout-.../`.
+
+## Chrome Extension
+
+The Chrome extension is a thin local launcher. Start the Flask server:
+
+```powershell
+python web/extension/server.py
+```
+
+Then click the extension button. The server runs `python main.py` from the
+project root and returns stdout/stderr to the popup.
+
+## Legacy Code
+
+The old all-in-one script lives at `legacy/beat-bridge.py` for reference. Use
+`main.py` for maintained sync work.

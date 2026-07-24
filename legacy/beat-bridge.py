@@ -1,3 +1,8 @@
+"""Legacy monolithic script kept for reference.
+
+Use main.py for the maintained sync entry point.
+"""
+
 import spotipy
 import os
 import csv
