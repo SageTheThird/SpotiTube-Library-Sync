@@ -3,15 +3,20 @@ from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from config import YOUTUBE_CLIENT_SECRET_FILE, YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION
+from config import (
+    YOUTUBE_CLIENT_SECRET_FILE,
+    YOUTUBE_API_SERVICE_NAME,
+    YOUTUBE_API_VERSION,
+)
+
 
 def authenticate_youtube():
     """
     Authenticate with YouTube API and return the YouTube service object.
     Returns:
-        A built YouTube service object authenticated with user credentials. """
+        A built YouTube service object authenticated with user credentials."""
     scopes = ["https://www.googleapis.com/auth/youtube.force-ssl"]
-    token_file = 'token.json'
+    token_file = "token.json"
     credentials = None
 
     if os.path.exists(token_file):
@@ -20,9 +25,11 @@ def authenticate_youtube():
         if credentials and credentials.expired and credentials.refresh_token:
             credentials.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(YOUTUBE_CLIENT_SECRET_FILE, scopes)
+            flow = InstalledAppFlow.from_client_secrets_file(
+                YOUTUBE_CLIENT_SECRET_FILE, scopes
+            )
             credentials = flow.run_local_server(port=8080)
-        with open(token_file, 'w') as token:
+        with open(token_file, "w") as token:
             token.write(credentials.to_json())
 
     return build(YOUTUBE_API_SERVICE_NAME, YOUTUBE_API_VERSION, credentials=credentials)
@@ -40,9 +47,7 @@ def get_liked_videos(youtube, max_results=100):
         List of liked videos sorted by published date.
     """
     request = youtube.videos().list(
-        part="snippet,contentDetails",
-        myRating="like",
-        maxResults=50
+        part="snippet,contentDetails", myRating="like", maxResults=50
     )
 
     liked_videos = []
@@ -54,3 +59,33 @@ def get_liked_videos(youtube, max_results=100):
         request = youtube.videos().list_next(request, response)
 
     return liked_videos[:max_results]
+
+
+def search_youtube(youtube, query, max_results=1):
+    """
+    Search YouTube for a track and return first result
+    Returns video ID if found, None otherwise
+    """
+    try:
+        search_response = (
+            youtube.search()
+            .list(q=query, part="id,snippet", maxResults=max_results, type="video")
+            .execute()
+        )
+
+        if search_response.get("items"):
+            return search_response["items"][0]["id"]["videoId"]
+        return None
+    except Exception as e:
+        print(f"YouTube search error: {e}")
+        return None
+
+
+def like_youtube_video(youtube, video_id):
+    """Add video to liked videos on YouTube"""
+    try:
+        youtube.videos().rate(id=video_id, rating="like").execute()
+        return True
+    except Exception as e:
+        print(f"Error liking YouTube video: {e}")
+        return False
