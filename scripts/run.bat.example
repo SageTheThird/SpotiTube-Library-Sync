@@ -1,0 +1,7 @@
+@echo off
+cd /d D:\path-to-project
+REM Add --dry-run for a no-write check before a real sync.
+if not exist data\logs mkdir data\logs
+"path-to-python\python.exe" main.py > data\logs\output.txt 2>&1
+start /b cmd /c "powershell Get-Content data\logs\output.txt -Wait"
+pause

@@ -1,15 +1,30 @@
+.env
 .secrets.json
 .cache
+__pycache__/
+*.pyc
+run.bat
+
+# Local auth, caches, plans, sync state, and exports.
+data/auth/
+data/cache/
+data/plans/
+data/sync/
+data/exports/
+data/logs/
+data/archive/
+
+# Legacy root-level runtime files from older layouts.
 .spotify_cache
-.env
 secrets.json
+token.json
 spotify_already_liked_cache.json
 spotify_already_searched_cache.json
 spotify_import_plan.json
-spotify_import_plan.json.tmp
+spotify_to_youtube_plan.json
+youtube_search_cache.json
 yt_to_spotify_sync.json
+spotify_to_yt_sync.json
 yt_liked_cache.csv
-__pycache__
+spotify_liked_tracks.csv
 output.txt
-run.bat
-token.json

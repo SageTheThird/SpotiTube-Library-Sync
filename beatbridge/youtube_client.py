@@ -1,34 +1,51 @@
 import os
+from pathlib import Path
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from config import (
+from beatbridge.config import (
     YOUTUBE_CLIENT_SECRET_FILE,
+    YOUTUBE_TOKEN_FILE,
     YOUTUBE_API_SERVICE_NAME,
     YOUTUBE_API_VERSION,
 )
 
 
-def authenticate_youtube():
+def authenticate_youtube(open_browser=True):
     """
     Authenticate with YouTube API and return the YouTube service object.
     Returns:
         A built YouTube service object authenticated with user credentials."""
     scopes = ["https://www.googleapis.com/auth/youtube.force-ssl"]
-    token_file = "token.json"
+    token_file = YOUTUBE_TOKEN_FILE
     credentials = None
 
     if os.path.exists(token_file):
         credentials = Credentials.from_authorized_user_file(token_file, scopes)
     if not credentials or not credentials.valid:
         if credentials and credentials.expired and credentials.refresh_token:
-            credentials.refresh(Request())
-        else:
+            try:
+                credentials.refresh(Request())
+            except RefreshError as exc:
+                if not open_browser:
+                    raise RuntimeError(
+                        "YouTube token refresh failed and browser auth is disabled. "
+                        "Run once without --no-browser to reauthorize."
+                    ) from exc
+                credentials = None
+        if not credentials or not credentials.valid:
+            if not open_browser:
+                raise RuntimeError(
+                    "YouTube credentials are missing or expired. "
+                    "Run once without --no-browser to authorize."
+                )
             flow = InstalledAppFlow.from_client_secrets_file(
                 YOUTUBE_CLIENT_SECRET_FILE, scopes
             )
-            credentials = flow.run_local_server(port=8080)
+            credentials = flow.run_local_server(port=8080, open_browser=open_browser)
+        Path(token_file).parent.mkdir(parents=True, exist_ok=True)
         with open(token_file, "w") as token:
             token.write(credentials.to_json())
 
@@ -61,10 +78,9 @@ def get_liked_videos(youtube, max_results=100):
     return liked_videos[:max_results]
 
 
-def search_youtube(youtube, query, max_results=1):
+def search_youtube_videos(youtube, query, max_results=5):
     """
-    Search YouTube for a track and return first result
-    Returns video ID if found, None otherwise
+    Search YouTube for videos and return result items.
     """
     try:
         search_response = (
@@ -72,13 +88,21 @@ def search_youtube(youtube, query, max_results=1):
             .list(q=query, part="id,snippet", maxResults=max_results, type="video")
             .execute()
         )
-
-        if search_response.get("items"):
-            return search_response["items"][0]["id"]["videoId"]
-        return None
+        return search_response.get("items", [])
     except Exception as e:
         print(f"YouTube search error: {e}")
-        return None
+        return []
+
+
+def search_youtube(youtube, query, max_results=1):
+    """
+    Search YouTube for a track and return first result.
+    Returns video ID if found, None otherwise.
+    """
+    items = search_youtube_videos(youtube, query, max_results=max_results)
+    if items:
+        return items[0]["id"]["videoId"]
+    return None
 
 
 def like_youtube_video(youtube, video_id):

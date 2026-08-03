@@ -1,11 +1,13 @@
-import json
 import csv
 import re
-from config import YOUTUBE_LIKED_SONGS_CACHE_FILE
+from pathlib import Path
+
+from beatbridge.config import YOUTUBE_LIKED_SONGS_CACHE_FILE
 
 
 def save_to_csv(videos, filename=YOUTUBE_LIKED_SONGS_CACHE_FILE):
     """Save the video data to a CSV file"""
+    Path(filename).parent.mkdir(parents=True, exist_ok=True)
     with open(filename, mode='w', newline='', encoding='utf-8') as file:
         writer = csv.writer(file)
         writer.writerow(['Title'])

@@ -7,7 +7,7 @@ from pathlib import Path
 
 app = Flask(__name__)
 CORS(app)
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 @app.route("/run-script", methods=["POST"])

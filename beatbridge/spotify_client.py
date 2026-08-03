@@ -1,6 +1,5 @@
 import concurrent.futures
 import csv
-import json
 import logging
 import re
 import threading
@@ -11,16 +10,24 @@ from pathlib import Path
 import spotipy
 from Levenshtein import distance as levenshtein_distance
 
-from config import (
+from beatbridge.config import (
     SPOTIFY_ADD_BATCH_SIZE,
     SPOTIFY_ALREADY_ADDED_SONGS_CACHE_FILE,
     SPOTIFY_IMPORT_PLAN_FILE,
+    SPOTIFY_LIKED_TRACKS_EXPORT_FILE,
     SPOTIFY_MATCH_SCORE_THRESHOLD,
     SPOTIFY_SEARCH_CACHE_FILE,
     SPOTIFY_SEARCH_WORKERS,
     USE_IMPROVED_MATCHING,
 )
-from utils import clean_title
+from beatbridge.storage import (
+    compact_spotify_track,
+    load_json_file,
+    load_search_cache,
+    save_json_atomic,
+    save_search_cache_atomic,
+)
+from beatbridge.utils import clean_title
 
 
 logger = logging.getLogger(__name__)
@@ -86,7 +93,7 @@ def build_spotify_import_plan(
 ):
     """Match YouTube items to Spotify tracks and save a resumable import plan."""
     search_cache = load_spotify_search_cache(search_cache_file)
-    initial_cache_keys = set(search_cache)
+    initial_search_cache = dict(search_cache)
     local_liked_ids = load_local_cache(local_liked_cache_file)
     synced_video_ids, synced_candidate_keys = load_synced_source_keys(sync_cache)
     seen_candidate_keys = set()
@@ -179,8 +186,8 @@ def build_spotify_import_plan(
             )
 
     entries.sort(key=lambda entry: entry["source_index"])
-    if set(search_cache) != initial_cache_keys:
-        save_json_atomic(search_cache, search_cache_file)
+    if search_cache != initial_search_cache:
+        save_spotify_search_cache(search_cache, search_cache_file)
 
     plan = {
         "created_at": utc_now_iso(),
@@ -252,6 +259,7 @@ def apply_spotify_import_plan(
 
         if dry_run:
             logger.info("Dry run: would add %s Spotify tracks", len(track_ids))
+            added_track_ids.extend(track_ids)
             continue
 
         add_track_batch_with_retries(
@@ -267,6 +275,7 @@ def apply_spotify_import_plan(
             mark_source_synced(sync_cache, entry)
             added_track_ids.append(entry["spotify_track"]["id"])
 
+        refresh_spotify_plan_pending_summary(plan)
         save_json_atomic(plan, plan_file)
         if sync_cache:
             save_sync_cache(sync_cache)
@@ -288,7 +297,7 @@ def match_candidate_to_spotify(spotify, candidate, search_cache):
     api_searches = 0
 
     for query in candidate["queries"]:
-        cached = query in search_cache
+        cached = has_usable_spotify_cached_value(search_cache.get(query))
         tracks = search_spotify_cached(spotify, query, search_cache)
         queries_run.append(query)
         cache_hits += 1 if cached else 0
@@ -324,7 +333,7 @@ def match_candidate_to_spotify(spotify, candidate, search_cache):
 
 def search_spotify_cached(spotify, query, search_cache, limit=5):
     with cache_lock:
-        if query in search_cache:
+        if has_usable_spotify_cached_value(search_cache.get(query)):
             cached_value = search_cache[query]
             if isinstance(cached_value, list):
                 return cached_value
@@ -333,9 +342,24 @@ def search_spotify_cached(spotify, query, search_cache, limit=5):
 
     results = spotify.search(q=query, limit=limit, type="track")
     tracks = results["tracks"]["items"]
+    compact_tracks = [compact_spotify_track(track) for track in tracks]
     with cache_lock:
-        search_cache[query] = tracks
-    return tracks
+        search_cache[query] = compact_tracks
+    return compact_tracks
+
+
+def has_usable_spotify_cached_value(cached_value):
+    if cached_value is None:
+        return False
+    if cached_value == []:
+        return True
+    if isinstance(cached_value, str):
+        return not USE_IMPROVED_MATCHING
+    if isinstance(cached_value, list):
+        if not USE_IMPROVED_MATCHING:
+            return True
+        return any(track.get("name") for track in cached_value if isinstance(track, dict))
+    return False
 
 
 def build_track_candidate(item, source_index):
@@ -480,24 +504,27 @@ def dedupe_plan_pending_tracks(plan):
     before = stats["spotify_track_duplicates"]
     dedupe_pending_spotify_track_ids(plan["entries"], stats)
 
+    refresh_spotify_plan_pending_summary(plan)
+    if stats["spotify_track_duplicates"] != before:
+        logger.info(
+            "Skipped %s duplicate Spotify track matches in saved plan",
+            stats["spotify_track_duplicates"] - before,
+        )
+
+
+def refresh_spotify_plan_pending_summary(plan):
+    stats = plan.setdefault("summary", {})
     entries_by_id = {entry["id"]: entry for entry in plan["entries"]}
     plan["add_queue"] = [
         entry_id
         for entry_id in plan.get("add_queue", [])
         if entries_by_id.get(entry_id, {}).get("status") == "pending"
     ]
-    pending_track_ids = [
+    stats["pending"] = len(plan["add_queue"])
+    stats["pending_track_ids"] = [
         entries_by_id[entry_id]["spotify_track"]["id"]
         for entry_id in plan["add_queue"]
     ]
-    stats["pending"] = len(plan["add_queue"])
-    stats["matched"] = len(plan["add_queue"])
-    stats["pending_track_ids"] = pending_track_ids
-    if stats["spotify_track_duplicates"] != before:
-        logger.info(
-            "Skipped %s duplicate Spotify track matches in saved plan",
-            stats["spotify_track_duplicates"] - before,
-        )
 
 
 def saved_tracks_contains_with_split(spotify, track_ids):
@@ -619,7 +646,9 @@ def serialize_spotify_track(track):
 def load_synced_source_keys(sync_cache):
     if not sync_cache:
         return set(), set()
-    synced_items = sync_cache.get("synced_items", [])
+    synced_items = sync_cache.get("synced_items", []) + sync_cache.get(
+        "skip_synced_items", []
+    )
     return (
         {item.get("youtube_id") for item in synced_items if item.get("youtube_id")},
         {
@@ -671,12 +700,13 @@ def parse_youtube_duration(duration):
     return total_seconds
 
 
-def get_all_saved_tracks(spotify, filename="spotify_liked_tracks.csv"):
+def get_all_saved_tracks(spotify, filename=SPOTIFY_LIKED_TRACKS_EXPORT_FILE):
     """Retrieve all saved Spotify tracks and save them to a CSV file."""
     offset = 0
     all_tracks = []
     total_tracks = None
 
+    Path(filename).parent.mkdir(parents=True, exist_ok=True)
     with open(filename, "w", newline="", encoding="utf-8") as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(
@@ -718,14 +748,19 @@ def get_all_saved_tracks(spotify, filename="spotify_liked_tracks.csv"):
 
 def load_spotify_search_cache(cache_file=SPOTIFY_SEARCH_CACHE_FILE):
     with cache_lock:
-        return load_json_file(cache_file, default={})
+        return load_search_cache(cache_file, service="spotify")
+
+
+def save_spotify_search_cache(cache, cache_file=SPOTIFY_SEARCH_CACHE_FILE):
+    with cache_lock:
+        save_search_cache_atomic(cache, cache_file, service="spotify")
 
 
 def update_spotify_search_cache(track_name, tracks, cache_file=SPOTIFY_SEARCH_CACHE_FILE):
     with cache_lock:
         cache = load_spotify_search_cache(cache_file)
         cache[track_name] = tracks
-        save_json_atomic(cache, cache_file)
+        save_spotify_search_cache(cache, cache_file)
 
 
 def search_spotify(
@@ -738,7 +773,7 @@ def search_spotify(
     cache = load_spotify_search_cache(cache_file)
     tracks = search_spotify_cached(spotify, track_name, cache, limit=limit)
     if update_cache:
-        save_json_atomic(cache, cache_file)
+        save_spotify_search_cache(cache, cache_file)
     if USE_IMPROVED_MATCHING:
         return tracks
     return tracks[0]["id"] if tracks else None
@@ -823,22 +858,6 @@ def dedupe_preserve_order(values):
         seen.add(key)
         result.append(value)
     return result
-
-
-def load_json_file(file_path, default):
-    path = Path(file_path)
-    if not path.exists():
-        return default
-    with path.open("r", encoding="utf-8") as file:
-        return json.load(file)
-
-
-def save_json_atomic(data, file_path):
-    path = Path(file_path)
-    temp_path = path.with_suffix(path.suffix + ".tmp")
-    with temp_path.open("w", encoding="utf-8") as file:
-        json.dump(data, file, indent=2)
-    temp_path.replace(path)
 
 
 def utc_now_iso():
