@@ -1,0 +1,18 @@
+name: Deploy Mini PC
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Update local deployment
+        run: |
+          set -euo pipefail
+          cd /home/cj/beatbridge-sync
+          git fetch origin main
+          git reset --hard origin/main
+          chmod +x scripts/*.sh
+          docker compose build beatbridge
+          docker compose run --rm beatbridge python main.py --check-auth --no-browser --no-notify

@@ -212,6 +212,48 @@ python main.py --direction spotify-to-yt --apply-plan --no-browser
 If `--check-auth --no-browser` fails, run the same command without
 `--no-browser` once from an interactive shell to refresh OAuth tokens.
 
+## Docker Deployment
+
+The app can run as a one-shot Docker Compose job. Build it locally or on a
+server with:
+
+```powershell
+docker compose build beatbridge
+```
+
+Run auth preflight:
+
+```powershell
+docker compose run --rm beatbridge python main.py --check-auth --no-browser --no-notify
+```
+
+Run a two-way sync:
+
+```powershell
+docker compose run --rm beatbridge python main.py --direction two-way --no-browser
+```
+
+For the mini PC deployment, use the local PowerShell helper from this repo:
+
+```powershell
+.\scripts\deploy_minipc.ps1 -SyncRuntimeData
+```
+
+After the first deployment, future code-only updates can omit runtime data:
+
+```powershell
+.\scripts\deploy_minipc.ps1
+```
+
+On the server, install the twice-daily schedule from the deployment directory:
+
+```bash
+./scripts/install_cron.sh
+```
+
+The schedule runs at `00:15` and `12:15` UTC and writes logs to
+`data/logs/scheduled.log`.
+
 ## Runtime Files
 
 Everything under `data/auth/`, `data/cache/`, `data/plans/`, `data/sync/`,

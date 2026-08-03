@@ -1,0 +1,13 @@
+name: beatbridge-sync
+
+services:
+  beatbridge:
+    build: .
+    image: beatbridge-sync:latest
+    env_file: .env
+    environment:
+      BEATBRIDGE_DATA_DIR: /app/data
+    volumes:
+      - ./data:/app/data
+    restart: "no"
+    mem_limit: 512m
