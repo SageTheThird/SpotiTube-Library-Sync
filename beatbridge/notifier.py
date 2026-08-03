@@ -50,7 +50,12 @@ def notify_sync_summary(summary):
 
 
 def format_sync_summary(summary):
-    status = "dry run" if summary.get("dry_run") else "completed"
+    if summary.get("failed"):
+        status = "failed"
+    elif summary.get("dry_run"):
+        status = "dry run"
+    else:
+        status = "completed"
     mode = "plan" if summary.get("plan_only") else summary.get("mode", "sync")
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     lines = [
@@ -63,7 +68,9 @@ def format_sync_summary(summary):
     workflows = summary.get("workflows") or []
     for workflow in workflows:
         label = workflow.get("label", workflow.get("direction", "workflow"))
-        if workflow.get("plan_only"):
+        if summary.get("failed"):
+            lines.append(f"- {label}: failed before completing")
+        elif workflow.get("plan_only"):
             lines.append(
                 f"- {label}: built plan with {workflow.get('planned', 0)} pending item(s)"
             )
