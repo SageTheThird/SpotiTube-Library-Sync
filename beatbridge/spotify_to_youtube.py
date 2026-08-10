@@ -21,7 +21,7 @@ from beatbridge.storage import (
     save_json_atomic,
     save_search_cache_atomic,
 )
-from beatbridge.youtube_client import like_youtube_video, search_youtube_videos
+from beatbridge.youtube_client import like_youtube_video_result, search_youtube_videos
 
 
 logger = logging.getLogger(__name__)
@@ -40,6 +40,7 @@ def build_spotify_to_youtube_plan(
     initial_search_cache = dict(search_cache)
     synced_spotify_ids = load_synced_spotify_ids(sync_cache)
     synced_youtube_ids = load_synced_youtube_ids(sync_cache)
+    blocked_youtube_ids = load_blocked_youtube_ids(sync_cache)
     reverse_imported_spotify_ids = load_synced_spotify_ids(reverse_sync_cache)
     seen_candidate_keys = set()
 
@@ -50,6 +51,7 @@ def build_spotify_to_youtube_plan(
         "reverse_import_skips": 0,
         "duplicates_in_run": 0,
         "already_synced_youtube": 0,
+        "blocked_youtube_rating": 0,
         "matched": 0,
         "not_found": 0,
         "search_cache_hits": 0,
@@ -112,6 +114,19 @@ def build_spotify_to_youtube_plan(
                         **base_plan_entry(candidate),
                         "status": "skipped",
                         "reason": "already_synced_youtube",
+                        "youtube_video": youtube_video,
+                        "score": result["score"],
+                        "queries": result["queries"],
+                    }
+                )
+                continue
+            if youtube_video["id"] in blocked_youtube_ids:
+                stats["blocked_youtube_rating"] += 1
+                entries.append(
+                    {
+                        **base_plan_entry(candidate),
+                        "status": "skipped",
+                        "reason": "previous_youtube_rate_failure",
                         "youtube_video": youtube_video,
                         "score": result["score"],
                         "queries": result["queries"],
@@ -194,7 +209,8 @@ def apply_spotify_to_youtube_plan(
             liked_video_ids.append(video_id)
             continue
 
-        if like_youtube_video(youtube, video_id):
+        rate_result = like_youtube_video_result(youtube, video_id)
+        if rate_result["ok"]:
             entry["status"] = "liked"
             entry["liked_at"] = utc_now_iso()
             mark_spotify_to_youtube_synced(sync_cache, entry)
@@ -204,6 +220,23 @@ def apply_spotify_to_youtube_plan(
             save_sync_cache(sync_cache)
             logger.info(
                 "Liked YouTube video %s of %s: %s",
+                index,
+                len(pending_entries),
+                video_id,
+            )
+            continue
+
+        if not rate_result["retryable"]:
+            entry["status"] = "skipped"
+            entry["reason"] = f"youtube_rate_{rate_result['reason']}"
+            entry["error"] = rate_result["message"]
+            entry["skipped_at"] = utc_now_iso()
+            mark_spotify_to_youtube_blocked(sync_cache, entry, rate_result)
+            refresh_youtube_plan_pending_summary(plan)
+            save_json_atomic(plan, plan_file)
+            save_sync_cache(sync_cache)
+            logger.info(
+                "Skipped unrateable YouTube video %s of %s: %s",
                 index,
                 len(pending_entries),
                 video_id,
@@ -445,6 +478,16 @@ def load_synced_youtube_ids(sync_cache):
     }
 
 
+def load_blocked_youtube_ids(sync_cache):
+    if not sync_cache:
+        return set()
+    return {
+        item.get("youtube_id")
+        for item in sync_cache.get("blocked_items", [])
+        if item.get("youtube_id")
+    }
+
+
 def mark_spotify_to_youtube_synced(sync_cache, entry):
     sync_cache.setdefault("synced_items", []).append(
         {
@@ -458,6 +501,25 @@ def mark_spotify_to_youtube_synced(sync_cache, entry):
         }
     )
     sync_cache["last_sync"] = utc_now_iso()
+
+
+def mark_spotify_to_youtube_blocked(sync_cache, entry, rate_result):
+    blocked_items = sync_cache.setdefault("blocked_items", [])
+    youtube_id = entry["youtube_video"]["id"]
+    if any(item.get("youtube_id") == youtube_id for item in blocked_items):
+        return
+    blocked_items.append(
+        {
+            "spotify_id": entry["spotify_id"],
+            "spotify_name": entry["spotify_name"],
+            "spotify_artists": entry["spotify_artists"],
+            "candidate_key": entry["candidate_key"],
+            "youtube_id": youtube_id,
+            "youtube_title": entry["youtube_video"].get("title"),
+            "reason": rate_result["reason"],
+            "blocked_at": utc_now_iso(),
+        }
+    )
 
 
 def save_sync_cache(sync_cache):

@@ -7,9 +7,13 @@ mkdir -p data/logs
 timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 echo "[$timestamp] starting BeatBridge two-way sync"
 
-if ! docker compose run --rm beatbridge \
-  python main.py --direction two-way --no-browser; then
-  status=$?
+set +e
+docker compose run --rm beatbridge \
+  python main.py --direction two-way --no-browser
+status=$?
+set -e
+
+if [ "$status" -ne 0 ]; then
   timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   echo "[$timestamp] BeatBridge two-way sync failed with exit code $status"
   docker compose run --rm beatbridge python - <<'PY' || true

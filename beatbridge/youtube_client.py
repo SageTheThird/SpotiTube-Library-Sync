@@ -1,16 +1,26 @@
 import os
+import logging
 from pathlib import Path
 from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from beatbridge.config import (
     YOUTUBE_CLIENT_SECRET_FILE,
     YOUTUBE_TOKEN_FILE,
     YOUTUBE_API_SERVICE_NAME,
     YOUTUBE_API_VERSION,
 )
+
+
+logger = logging.getLogger(__name__)
+NON_RETRYABLE_RATE_REASONS = {
+    "videoRatingDisabled",
+    "forbidden",
+    "videoNotFound",
+}
 
 
 def authenticate_youtube(open_browser=True):
@@ -107,9 +117,38 @@ def search_youtube(youtube, query, max_results=1):
 
 def like_youtube_video(youtube, video_id):
     """Add video to liked videos on YouTube"""
+    return like_youtube_video_result(youtube, video_id)["ok"]
+
+
+def like_youtube_video_result(youtube, video_id):
+    """Add video to liked videos on YouTube and return a structured result."""
     try:
         youtube.videos().rate(id=video_id, rating="like").execute()
-        return True
-    except Exception as e:
-        print(f"Error liking YouTube video: {e}")
-        return False
+        return {"ok": True, "reason": None, "message": None, "retryable": False}
+    except HttpError as exc:
+        reason = extract_youtube_error_reason(exc)
+        logger.warning("YouTube rate failed for %s with reason %s", video_id, reason)
+        return {
+            "ok": False,
+            "reason": reason,
+            "message": str(exc),
+            "retryable": reason not in NON_RETRYABLE_RATE_REASONS,
+        }
+    except Exception as exc:
+        logger.warning("YouTube rate failed for %s: %s", video_id, exc)
+        return {
+            "ok": False,
+            "reason": type(exc).__name__,
+            "message": str(exc),
+            "retryable": True,
+        }
+
+
+def extract_youtube_error_reason(exc):
+    try:
+        errors = exc.error_details
+    except AttributeError:
+        errors = None
+    if errors:
+        return errors[0].get("reason", "unknown")
+    return "unknown"
