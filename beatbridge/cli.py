@@ -261,7 +261,7 @@ def run_youtube_to_youtube(args, open_browser):
         )
         target_liked_youtube_ids = get_liked_video_ids(
             target_youtube,
-            max_results=NUMBER_OF_LIKED_SONGS_TO_FETCH_FROM_YT,
+            max_results=args.limit or NUMBER_OF_LIKED_SONGS_TO_FETCH_FROM_YT,
         )
 
     plan = build_youtube_to_youtube_plan(
