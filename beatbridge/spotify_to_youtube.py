@@ -246,6 +246,21 @@ def apply_spotify_to_youtube_plan(
                 len(pending_entries),
                 video_id,
             )
+            continue
+
+        plan.setdefault("summary", {})["stopped_reason"] = (
+            f"retryable_youtube_rate_{rate_result['reason']}"
+        )
+        plan["summary"]["stopped_at"] = utc_now_iso()
+        refresh_youtube_plan_pending_summary(plan)
+        save_json_atomic(plan, plan_file)
+        save_sync_cache(sync_cache)
+        logger.warning(
+            "Stopping Spotify-to-YouTube apply after retryable failure on %s: %s",
+            video_id,
+            rate_result["reason"],
+        )
+        break
 
     return liked_video_ids
 
