@@ -1,4 +1,5 @@
 import os
+import re
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -49,6 +50,7 @@ YOUTUBE_CLIENT_SECRET_FILE = os.getenv(
     "YOUTUBE_CLIENT_SECRET_FILE", str(AUTH_DIR / "secrets.json")
 )
 YOUTUBE_TOKEN_FILE = os.getenv("YOUTUBE_TOKEN_FILE", str(AUTH_DIR / "token.json"))
+DEFAULT_YOUTUBE_PROFILE = os.getenv("DEFAULT_YOUTUBE_PROFILE", "").strip() or None
 YOUTUBE_API_SERVICE_NAME = "youtube"
 YOUTUBE_API_VERSION = "v3"
 
@@ -84,3 +86,61 @@ YOUTUBE_SEARCH_WORKERS = int(os.getenv("YOUTUBE_SEARCH_WORKERS", "1"))
 YOUTUBE_MATCH_SCORE_THRESHOLD = float(
     os.getenv("YOUTUBE_MATCH_SCORE_THRESHOLD", "0.65")
 )
+
+
+def safe_profile_name(profile):
+    if not profile:
+        return None
+    normalized = re.sub(r"[^A-Za-z0-9_-]+", "-", profile.strip().lower())
+    normalized = re.sub(r"-+", "-", normalized).strip("-")
+    if not normalized:
+        raise ValueError("YouTube profile name cannot be empty")
+    return normalized
+
+
+def profile_env_name(prefix, profile):
+    safe = safe_profile_name(profile).replace("-", "_").upper()
+    return f"{prefix}_{safe}"
+
+
+def youtube_token_file(profile=None):
+    safe = safe_profile_name(profile or DEFAULT_YOUTUBE_PROFILE)
+    if not safe:
+        return YOUTUBE_TOKEN_FILE
+    return os.getenv(
+        profile_env_name("YOUTUBE_TOKEN_FILE", safe),
+        str(AUTH_DIR / f"youtube-{safe}-token.json"),
+    )
+
+
+def youtube_liked_songs_cache_file(profile=None):
+    safe = safe_profile_name(profile)
+    if not safe:
+        return YOUTUBE_LIKED_SONGS_CACHE_FILE
+    return str(EXPORT_DIR / f"yt_liked_{safe}_cache.csv")
+
+
+def spotify_to_youtube_plan_file(profile=None):
+    safe = safe_profile_name(profile)
+    if not safe:
+        return SPOTIFY_TO_YOUTUBE_PLAN_FILE
+    return str(PLAN_DIR / f"spotify_to_youtube_{safe}_plan.json")
+
+
+def spotify_to_youtube_sync_file(profile=None):
+    safe = safe_profile_name(profile)
+    if not safe:
+        return SPOTIFY_TO_YT_SYNC_FILE
+    return str(SYNC_DIR / f"spotify_to_yt_{safe}_sync.json")
+
+
+def youtube_to_youtube_plan_file(source_profile, target_profile):
+    source = safe_profile_name(source_profile)
+    target = safe_profile_name(target_profile)
+    return str(PLAN_DIR / f"youtube_{source}_to_youtube_{target}_plan.json")
+
+
+def youtube_to_youtube_sync_file(source_profile, target_profile):
+    source = safe_profile_name(source_profile)
+    target = safe_profile_name(target_profile)
+    return str(SYNC_DIR / f"youtube_{source}_to_youtube_{target}_sync.json")

@@ -32,6 +32,7 @@ def build_spotify_to_youtube_plan(
     spotify_songs,
     sync_cache,
     reverse_sync_cache=None,
+    target_liked_youtube_ids=None,
     plan_file=SPOTIFY_TO_YOUTUBE_PLAN_FILE,
     search_cache_file=YOUTUBE_SEARCH_CACHE_FILE,
 ):
@@ -42,6 +43,7 @@ def build_spotify_to_youtube_plan(
     synced_youtube_ids = load_synced_youtube_ids(sync_cache)
     blocked_youtube_ids = load_blocked_youtube_ids(sync_cache)
     reverse_imported_spotify_ids = load_synced_spotify_ids(reverse_sync_cache)
+    target_liked_youtube_ids = set(target_liked_youtube_ids or [])
     seen_candidate_keys = set()
 
     entries = []
@@ -51,6 +53,7 @@ def build_spotify_to_youtube_plan(
         "reverse_import_skips": 0,
         "duplicates_in_run": 0,
         "already_synced_youtube": 0,
+        "already_liked_on_target": 0,
         "blocked_youtube_rating": 0,
         "matched": 0,
         "not_found": 0,
@@ -114,6 +117,19 @@ def build_spotify_to_youtube_plan(
                         **base_plan_entry(candidate),
                         "status": "skipped",
                         "reason": "already_synced_youtube",
+                        "youtube_video": youtube_video,
+                        "score": result["score"],
+                        "queries": result["queries"],
+                    }
+                )
+                continue
+            if youtube_video["id"] in target_liked_youtube_ids:
+                stats["already_liked_on_target"] += 1
+                entries.append(
+                    {
+                        **base_plan_entry(candidate),
+                        "status": "skipped",
+                        "reason": "already_liked_on_target",
                         "youtube_video": youtube_video,
                         "score": result["score"],
                         "queries": result["queries"],

@@ -7,10 +7,10 @@ from beatbridge.config import (
     NUMBER_OF_LIKED_SONGS_TO_FETCH_FROM_YT,
     NUMBER_OF_SONGS_TO_IMPORT_INTO_SPOTIFY,
     SPOTIFY_IMPORT_PLAN_FILE,
-    SPOTIFY_TO_YOUTUBE_PLAN_FILE,
-    SPOTIFY_TO_YT_SYNC_FILE,
-    YOUTUBE_LIKED_SONGS_CACHE_FILE,
     YT_TO_SPOTIFY_SYNC_FILE,
+    spotify_to_youtube_plan_file,
+    spotify_to_youtube_sync_file,
+    youtube_liked_songs_cache_file,
 )
 from beatbridge.spotify_to_youtube import (
     apply_spotify_to_youtube_plan,
@@ -23,7 +23,7 @@ from beatbridge.spotify_client import (
 )
 from beatbridge.storage import load_json_file, save_json_atomic
 from beatbridge.utils import save_to_csv
-from beatbridge.youtube_client import get_liked_videos
+from beatbridge.youtube_client import get_liked_video_ids, get_liked_videos
 
 
 logger = logging.getLogger(__name__)
@@ -32,15 +32,19 @@ logger = logging.getLogger(__name__)
 class SyncDirection(Enum):
     YT_TO_SPOTIFY = "yt-to-spotify"
     SPOTIFY_TO_YT = "spotify-to-yt"
+    YT_TO_YT = "yt-to-yt"
     TWO_WAY = "two-way"
 
 
 class TwoWaySync:
-    def __init__(self, youtube_client, spotify_client):
+    def __init__(self, youtube_client, spotify_client, youtube_profile=None):
         self.youtube = youtube_client
         self.spotify = spotify_client
+        self.youtube_profile = youtube_profile
         self.yt_to_spotify_cache = YT_TO_SPOTIFY_SYNC_FILE
-        self.spotify_to_yt_cache = SPOTIFY_TO_YT_SYNC_FILE
+        self.spotify_to_yt_cache = spotify_to_youtube_sync_file(youtube_profile)
+        self.spotify_to_youtube_plan = spotify_to_youtube_plan_file(youtube_profile)
+        self.youtube_liked_cache = youtube_liked_songs_cache_file(youtube_profile)
 
     def run_sync(
         self,
@@ -48,6 +52,7 @@ class TwoWaySync:
         dry_run=False,
         limit=None,
         plan_only=False,
+        skip_reverse_imports=True,
     ):
         logger.info(
             "Starting %s sync%s",
@@ -72,6 +77,7 @@ class TwoWaySync:
                     dry_run=dry_run,
                     limit=limit,
                     plan_only=plan_only,
+                    skip_reverse_imports=skip_reverse_imports,
                 )
             )
 
@@ -89,13 +95,13 @@ class TwoWaySync:
             self.youtube,
             max_results=limit or NUMBER_OF_LIKED_SONGS_TO_FETCH_FROM_YT,
         )
-        save_to_csv(liked_videos)
+        save_to_csv(liked_videos, self.youtube_liked_cache)
         sync_cache = self.load_sync_cache(self.yt_to_spotify_cache)
         opposite_cache = self.load_sync_cache(self.spotify_to_yt_cache)
         sync_cache["skip_synced_items"] = opposite_cache.get("synced_items", [])
         track_ids = import_tracks_from_csv(
             self.spotify,
-            YOUTUBE_LIKED_SONGS_CACHE_FILE,
+            self.youtube_liked_cache,
             max_songs=limit or NUMBER_OF_SONGS_TO_IMPORT_INTO_SPOTIFY,
             videos=liked_videos,
             dry_run=dry_run,
@@ -151,7 +157,7 @@ class TwoWaySync:
         video_ids = apply_spotify_to_youtube_plan(
             self.youtube,
             sync_cache,
-            plan_file=SPOTIFY_TO_YOUTUBE_PLAN_FILE,
+            plan_file=self.spotify_to_youtube_plan,
             dry_run=dry_run,
         )
         if not dry_run:
@@ -159,21 +165,35 @@ class TwoWaySync:
         logger.info("Applied %s YouTube likes from saved plan", len(video_ids))
         return {
             "direction": SyncDirection.SPOTIFY_TO_YT.value,
-            "label": "Spotify -> YouTube",
+            "label": self.spotify_to_youtube_label(),
             "dry_run": dry_run,
             "plan_only": False,
             "processed": len(video_ids),
-            "planned": load_plan_summary(SPOTIFY_TO_YOUTUBE_PLAN_FILE).get("pending"),
-            "skipped": count_plan_statuses(SPOTIFY_TO_YOUTUBE_PLAN_FILE, "skipped"),
-            "not_found": load_plan_summary(SPOTIFY_TO_YOUTUBE_PLAN_FILE).get("not_found"),
+            "planned": load_plan_summary(self.spotify_to_youtube_plan).get("pending"),
+            "skipped": count_plan_statuses(self.spotify_to_youtube_plan, "skipped"),
+            "not_found": load_plan_summary(self.spotify_to_youtube_plan).get("not_found"),
         }
 
-    def sync_spotify_to_youtube(self, dry_run=False, limit=None, plan_only=False):
+    def sync_spotify_to_youtube(
+        self,
+        dry_run=False,
+        limit=None,
+        plan_only=False,
+        skip_reverse_imports=True,
+    ):
         cache = self.load_sync_cache(self.spotify_to_yt_cache)
-        opposite_cache = self.load_sync_cache(self.yt_to_spotify_cache)
+        opposite_cache = (
+            self.load_sync_cache(self.yt_to_spotify_cache)
+            if skip_reverse_imports
+            else None
+        )
         spotify_songs = get_all_spotify_liked_songs(
             self.spotify,
             max_songs=limit or NUMBER_OF_SONGS_TO_IMPORT_INTO_SPOTIFY,
+        )
+        target_liked_youtube_ids = get_liked_video_ids(
+            self.youtube,
+            max_results=NUMBER_OF_LIKED_SONGS_TO_FETCH_FROM_YT,
         )
 
         plan = build_spotify_to_youtube_plan(
@@ -181,26 +201,30 @@ class TwoWaySync:
             spotify_songs,
             sync_cache=cache,
             reverse_sync_cache=opposite_cache,
-            plan_file=SPOTIFY_TO_YOUTUBE_PLAN_FILE,
+            target_liked_youtube_ids=target_liked_youtube_ids,
+            plan_file=self.spotify_to_youtube_plan,
         )
         if plan_only:
-            logger.info("Plan-only mode: wrote %s", SPOTIFY_TO_YOUTUBE_PLAN_FILE)
+            logger.info("Plan-only mode: wrote %s", self.spotify_to_youtube_plan)
             return {
                 "direction": SyncDirection.SPOTIFY_TO_YT.value,
-                "label": "Spotify -> YouTube",
+                "label": self.spotify_to_youtube_label(),
                 "dry_run": dry_run,
                 "plan_only": True,
                 "source_items": len(spotify_songs),
                 "processed": 0,
                 "planned": plan["summary"].get("pending", 0),
-                "skipped": count_plan_statuses(SPOTIFY_TO_YOUTUBE_PLAN_FILE, "skipped"),
+                "skipped": count_plan_statuses(self.spotify_to_youtube_plan, "skipped"),
                 "not_found": plan["summary"].get("not_found"),
+                "already_liked_on_target": plan["summary"].get(
+                    "already_liked_on_target"
+                ),
             }
 
         video_ids = apply_spotify_to_youtube_plan(
             self.youtube,
             cache,
-            plan_file=SPOTIFY_TO_YOUTUBE_PLAN_FILE,
+            plan_file=self.spotify_to_youtube_plan,
             dry_run=dry_run,
         )
         if not dry_run:
@@ -208,15 +232,23 @@ class TwoWaySync:
         logger.info("Synced %s Spotify tracks to YouTube", len(video_ids))
         return {
             "direction": SyncDirection.SPOTIFY_TO_YT.value,
-            "label": "Spotify -> YouTube",
+            "label": self.spotify_to_youtube_label(),
             "dry_run": dry_run,
             "plan_only": plan_only,
             "source_items": len(spotify_songs),
             "processed": len(video_ids),
             "planned": plan["summary"].get("pending", 0),
-            "skipped": count_plan_statuses(SPOTIFY_TO_YOUTUBE_PLAN_FILE, "skipped"),
+            "skipped": count_plan_statuses(self.spotify_to_youtube_plan, "skipped"),
             "not_found": plan["summary"].get("not_found"),
+            "already_liked_on_target": plan["summary"].get(
+                "already_liked_on_target"
+            ),
         }
+
+    def spotify_to_youtube_label(self):
+        if self.youtube_profile:
+            return f"Spotify -> YouTube ({self.youtube_profile})"
+        return "Spotify -> YouTube"
 
     def filter_new_spotify_songs(self, spotify_songs, cache):
         synced_spotify_ids = {

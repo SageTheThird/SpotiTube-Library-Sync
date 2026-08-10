@@ -52,6 +52,15 @@ Put your Google OAuth client file at `data/auth/secrets.json`. YouTube auth
 stores its local token at `data/auth/token.json`. Spotify auth stores its local
 cache at `data/auth/spotify_cache`.
 
+For multiple YouTube accounts, give each account a stable profile name and keep
+the OAuth tokens separate:
+
+```text
+DEFAULT_YOUTUBE_PROFILE=ksajid505
+YOUTUBE_TOKEN_FILE_KSAJID505=data/auth/youtube-ksajid505-token.json
+YOUTUBE_TOKEN_FILE_NASTYGAMER=data/auth/youtube-nastygamer-token.json
+```
+
 For Spotify local OAuth, add this exact redirect URI in the Spotify developer
 dashboard:
 
@@ -65,6 +74,7 @@ You can override local state locations in `.env`:
 BEATBRIDGE_DATA_DIR=data
 YOUTUBE_CLIENT_SECRET_FILE=data/auth/secrets.json
 YOUTUBE_TOKEN_FILE=data/auth/token.json
+DEFAULT_YOUTUBE_PROFILE=ksajid505
 SPOTIFY_AUTH_CACHE_FILE=data/auth/spotify_cache
 ```
 
@@ -88,6 +98,12 @@ Validate cached auth for unattended runs:
 
 ```powershell
 python main.py --check-auth --no-browser
+```
+
+Validate one YouTube profile only:
+
+```powershell
+python main.py --check-youtube-auth --youtube-profile nastygamer
 ```
 
 Build a YouTube-to-Spotify import plan without adding anything:
@@ -115,6 +131,12 @@ Build a Spotify-to-YouTube plan without liking anything:
 python main.py --direction spotify-to-yt --plan-only
 ```
 
+Target a named YouTube profile:
+
+```powershell
+python main.py --direction spotify-to-yt --youtube-profile nastygamer --include-reverse-imports
+```
+
 Build a smaller Spotify-to-YouTube diagnostic plan:
 
 ```powershell
@@ -133,6 +155,22 @@ python main.py --direction spotify-to-yt --apply-plan
 ```powershell
 python main.py --direction spotify-to-yt
 ```
+
+## YouTube To YouTube
+
+Named YouTube profiles make one-way account mirroring explicit. This copies
+source liked videos by video ID, oldest pending first, so the target liked list
+keeps the same top/newest ordering once the batch has landed:
+
+```powershell
+python main.py --direction yt-to-yt --source-youtube-profile ksajid505 --target-youtube-profile nastygamer --limit 25 --dry-run
+python main.py --direction yt-to-yt --source-youtube-profile ksajid505 --target-youtube-profile nastygamer
+```
+
+This is intentionally separate from the existing two-way flow. For the music
+account target, Spotify-to-YouTube should use `--include-reverse-imports` so
+tracks originally imported from the primary YouTube account can still land in
+the music YouTube account.
 
 ## YouTube To Spotify
 
@@ -233,6 +271,13 @@ Run a two-way sync:
 docker compose run --rm beatbridge python main.py --direction two-way --no-browser
 ```
 
+Run the music-account target sync:
+
+```powershell
+docker compose run --rm beatbridge python main.py --direction spotify-to-yt --youtube-profile nastygamer --include-reverse-imports --no-browser
+docker compose run --rm beatbridge python main.py --direction yt-to-yt --source-youtube-profile ksajid505 --target-youtube-profile nastygamer --no-browser
+```
+
 For the mini PC deployment, use the local PowerShell helper from this repo:
 
 ```powershell
@@ -251,7 +296,8 @@ On the server, install the twice-daily schedule from the deployment directory:
 ./scripts/install_cron.sh
 ```
 
-The schedule runs at `00:15` and `12:15` UTC and writes logs to
+The schedule runs the main two-way sync at `00:15` and `12:15` UTC, then runs
+the music-account target sync at `00:25` and `12:25` UTC. Logs go to
 `data/logs/scheduled.log`.
 
 ## Runtime Files
