@@ -33,6 +33,7 @@ def build_spotify_to_youtube_plan(
     sync_cache,
     reverse_sync_cache=None,
     target_liked_youtube_ids=None,
+    skip_reverse_imports=True,
     plan_file=SPOTIFY_TO_YOUTUBE_PLAN_FILE,
     search_cache_file=YOUTUBE_SEARCH_CACHE_FILE,
 ):
@@ -43,6 +44,7 @@ def build_spotify_to_youtube_plan(
     synced_youtube_ids = load_synced_youtube_ids(sync_cache)
     blocked_youtube_ids = load_blocked_youtube_ids(sync_cache)
     reverse_imported_spotify_ids = load_synced_spotify_ids(reverse_sync_cache)
+    reverse_youtube_matches = load_reverse_youtube_matches(reverse_sync_cache)
     target_liked_youtube_ids = set(target_liked_youtube_ids or [])
     seen_candidate_keys = set()
 
@@ -55,6 +57,7 @@ def build_spotify_to_youtube_plan(
         "already_synced_youtube": 0,
         "already_liked_on_target": 0,
         "blocked_youtube_rating": 0,
+        "direct_reverse_matches": 0,
         "matched": 0,
         "not_found": 0,
         "search_cache_hits": 0,
@@ -72,7 +75,7 @@ def build_spotify_to_youtube_plan(
                 stats["already_synced"] += 1
                 entries.append(skipped_plan_entry(candidate, "already_synced_spotify"))
                 continue
-            if candidate["spotify_id"] in reverse_imported_spotify_ids:
+            if skip_reverse_imports and candidate["spotify_id"] in reverse_imported_spotify_ids:
                 stats["reverse_import_skips"] += 1
                 entries.append(skipped_plan_entry(candidate, "imported_from_youtube"))
                 continue
@@ -82,6 +85,29 @@ def build_spotify_to_youtube_plan(
                 continue
 
             seen_candidate_keys.add(candidate["candidate_key"])
+
+            reverse_match = reverse_youtube_matches.get(
+                candidate["spotify_id"]
+            ) or reverse_youtube_matches.get(candidate["candidate_key"])
+            if reverse_match:
+                youtube_video = youtube_video_from_reverse_match(reverse_match)
+                maybe_entry = build_candidate_youtube_entry(
+                    candidate,
+                    youtube_video,
+                    synced_youtube_ids,
+                    target_liked_youtube_ids,
+                    blocked_youtube_ids,
+                    stats,
+                    score=1,
+                    queries=[],
+                    reason_prefix="original_youtube",
+                )
+                if maybe_entry["status"] == "pending":
+                    stats["direct_reverse_matches"] += 1
+                    stats["matched"] += 1
+                entries.append(maybe_entry)
+                continue
+
             future = executor.submit(
                 match_spotify_candidate_to_youtube,
                 youtube,
@@ -110,56 +136,19 @@ def build_spotify_to_youtube_plan(
                 continue
 
             youtube_video = serialize_youtube_video(result["match"])
-            if youtube_video["id"] in synced_youtube_ids:
-                stats["already_synced_youtube"] += 1
-                entries.append(
-                    {
-                        **base_plan_entry(candidate),
-                        "status": "skipped",
-                        "reason": "already_synced_youtube",
-                        "youtube_video": youtube_video,
-                        "score": result["score"],
-                        "queries": result["queries"],
-                    }
-                )
-                continue
-            if youtube_video["id"] in target_liked_youtube_ids:
-                stats["already_liked_on_target"] += 1
-                entries.append(
-                    {
-                        **base_plan_entry(candidate),
-                        "status": "skipped",
-                        "reason": "already_liked_on_target",
-                        "youtube_video": youtube_video,
-                        "score": result["score"],
-                        "queries": result["queries"],
-                    }
-                )
-                continue
-            if youtube_video["id"] in blocked_youtube_ids:
-                stats["blocked_youtube_rating"] += 1
-                entries.append(
-                    {
-                        **base_plan_entry(candidate),
-                        "status": "skipped",
-                        "reason": "previous_youtube_rate_failure",
-                        "youtube_video": youtube_video,
-                        "score": result["score"],
-                        "queries": result["queries"],
-                    }
-                )
-                continue
-
-            stats["matched"] += 1
-            entries.append(
-                {
-                    **base_plan_entry(candidate),
-                    "status": "pending",
-                    "youtube_video": youtube_video,
-                    "score": result["score"],
-                    "queries": result["queries"],
-                }
+            entry = build_candidate_youtube_entry(
+                candidate,
+                youtube_video,
+                synced_youtube_ids,
+                target_liked_youtube_ids,
+                blocked_youtube_ids,
+                stats,
+                score=result["score"],
+                queries=result["queries"],
             )
+            if entry["status"] == "pending":
+                stats["matched"] += 1
+            entries.append(entry)
 
     entries.sort(key=lambda entry: entry["source_index"])
     if search_cache != initial_search_cache:
@@ -464,6 +453,60 @@ def base_plan_entry(candidate):
     }
 
 
+def build_candidate_youtube_entry(
+    candidate,
+    youtube_video,
+    synced_youtube_ids,
+    target_liked_youtube_ids,
+    blocked_youtube_ids,
+    stats,
+    score,
+    queries,
+    reason_prefix=None,
+):
+    if youtube_video["id"] in synced_youtube_ids:
+        stats["already_synced_youtube"] += 1
+        return {
+            **base_plan_entry(candidate),
+            "status": "skipped",
+            "reason": "already_synced_youtube",
+            "youtube_video": youtube_video,
+            "score": score,
+            "queries": queries,
+        }
+    if youtube_video["id"] in target_liked_youtube_ids:
+        stats["already_liked_on_target"] += 1
+        return {
+            **base_plan_entry(candidate),
+            "status": "skipped",
+            "reason": "already_liked_on_target",
+            "youtube_video": youtube_video,
+            "score": score,
+            "queries": queries,
+        }
+    if youtube_video["id"] in blocked_youtube_ids:
+        stats["blocked_youtube_rating"] += 1
+        return {
+            **base_plan_entry(candidate),
+            "status": "skipped",
+            "reason": "previous_youtube_rate_failure",
+            "youtube_video": youtube_video,
+            "score": score,
+            "queries": queries,
+        }
+
+    entry = {
+        **base_plan_entry(candidate),
+        "status": "pending",
+        "youtube_video": youtube_video,
+        "score": score,
+        "queries": queries,
+    }
+    if reason_prefix:
+        entry["match_source"] = reason_prefix
+    return entry
+
+
 def serialize_youtube_video(video):
     snippet = video.get("snippet", {})
     return {
@@ -472,6 +515,31 @@ def serialize_youtube_video(video):
         "channel_title": snippet.get("channelTitle", ""),
         "published_at": snippet.get("publishedAt"),
     }
+
+
+def youtube_video_from_reverse_match(item):
+    return {
+        "id": item["youtube_id"],
+        "title": item.get("youtube_title") or "",
+        "channel_title": item.get("youtube_channel_title") or "",
+        "published_at": item.get("youtube_published_at"),
+    }
+
+
+def load_reverse_youtube_matches(sync_cache):
+    if not sync_cache:
+        return {}
+
+    matches = {}
+    for item in sync_cache.get("synced_items", []):
+        youtube_id = item.get("youtube_id")
+        if not youtube_id:
+            continue
+        if item.get("spotify_id"):
+            matches[item["spotify_id"]] = item
+        if item.get("candidate_key"):
+            matches[item["candidate_key"]] = item
+    return matches
 
 
 def load_synced_spotify_ids(sync_cache):

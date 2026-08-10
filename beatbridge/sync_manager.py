@@ -182,11 +182,7 @@ class TwoWaySync:
         skip_reverse_imports=True,
     ):
         cache = self.load_sync_cache(self.spotify_to_yt_cache)
-        opposite_cache = (
-            self.load_sync_cache(self.yt_to_spotify_cache)
-            if skip_reverse_imports
-            else None
-        )
+        opposite_cache = self.load_sync_cache(self.yt_to_spotify_cache)
         spotify_songs = get_all_spotify_liked_songs(
             self.spotify,
             max_songs=limit or NUMBER_OF_SONGS_TO_IMPORT_INTO_SPOTIFY,
@@ -202,6 +198,7 @@ class TwoWaySync:
             sync_cache=cache,
             reverse_sync_cache=opposite_cache,
             target_liked_youtube_ids=target_liked_youtube_ids,
+            skip_reverse_imports=skip_reverse_imports,
             plan_file=self.spotify_to_youtube_plan,
         )
         if plan_only:
@@ -218,6 +215,9 @@ class TwoWaySync:
                 "not_found": plan["summary"].get("not_found"),
                 "already_liked_on_target": plan["summary"].get(
                     "already_liked_on_target"
+                ),
+                "direct_reverse_matches": plan["summary"].get(
+                    "direct_reverse_matches"
                 ),
             }
 
@@ -243,6 +243,7 @@ class TwoWaySync:
             "already_liked_on_target": plan["summary"].get(
                 "already_liked_on_target"
             ),
+            "direct_reverse_matches": plan["summary"].get("direct_reverse_matches"),
         }
 
     def spotify_to_youtube_label(self):
