@@ -33,6 +33,7 @@ class SyncDirection(Enum):
     YT_TO_SPOTIFY = "yt-to-spotify"
     SPOTIFY_TO_YT = "spotify-to-yt"
     YT_TO_YT = "yt-to-yt"
+    YTMUSIC_TO_YTMUSIC = "ytmusic-to-ytmusic"
     TWO_WAY = "two-way"
 
 

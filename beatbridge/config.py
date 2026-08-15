@@ -51,6 +51,8 @@ YOUTUBE_CLIENT_SECRET_FILE = os.getenv(
 )
 YOUTUBE_TOKEN_FILE = os.getenv("YOUTUBE_TOKEN_FILE", str(AUTH_DIR / "token.json"))
 DEFAULT_YOUTUBE_PROFILE = os.getenv("DEFAULT_YOUTUBE_PROFILE", "").strip() or None
+YTMUSIC_CLIENT_ID = os.getenv("YTMUSIC_CLIENT_ID")
+YTMUSIC_CLIENT_SECRET = os.getenv("YTMUSIC_CLIENT_SECRET")
 YOUTUBE_API_SERVICE_NAME = "youtube"
 YOUTUBE_API_VERSION = "v3"
 
@@ -144,3 +146,44 @@ def youtube_to_youtube_sync_file(source_profile, target_profile):
     source = safe_profile_name(source_profile)
     target = safe_profile_name(target_profile)
     return str(SYNC_DIR / f"youtube_{source}_to_youtube_{target}_sync.json")
+
+
+def ytmusic_oauth_file(profile=None):
+    safe = safe_profile_name(profile or DEFAULT_YOUTUBE_PROFILE)
+    if not safe:
+        return str(AUTH_DIR / "ytmusic-oauth.json")
+    return os.getenv(
+        profile_env_name("YTMUSIC_OAUTH_FILE", safe),
+        str(AUTH_DIR / f"ytmusic-{safe}-oauth.json"),
+    )
+
+
+def ytmusic_browser_file(profile=None):
+    safe = safe_profile_name(profile or DEFAULT_YOUTUBE_PROFILE)
+    if not safe:
+        return str(AUTH_DIR / "ytmusic-browser.json")
+    return os.getenv(
+        profile_env_name("YTMUSIC_BROWSER_FILE", safe),
+        str(AUTH_DIR / f"ytmusic-{safe}-browser.json"),
+    )
+
+
+def ytmusic_raw_headers_file(profile=None):
+    safe = safe_profile_name(profile or DEFAULT_YOUTUBE_PROFILE)
+    if not safe:
+        return str(AUTH_DIR / "ytmusic-headers.txt")
+    return str(AUTH_DIR / f"ytmusic-{safe}-headers.txt")
+
+
+def ytmusic_to_ytmusic_plan_file(source_profile, target_profile, source_kind):
+    source = safe_profile_name(source_profile)
+    target = safe_profile_name(target_profile)
+    kind = safe_profile_name(source_kind)
+    return str(PLAN_DIR / f"ytmusic_{source}_to_ytmusic_{target}_{kind}_plan.json")
+
+
+def ytmusic_to_ytmusic_sync_file(source_profile, target_profile, source_kind):
+    source = safe_profile_name(source_profile)
+    target = safe_profile_name(target_profile)
+    kind = safe_profile_name(source_kind)
+    return str(SYNC_DIR / f"ytmusic_{source}_to_ytmusic_{target}_{kind}_sync.json")

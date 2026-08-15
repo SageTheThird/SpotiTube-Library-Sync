@@ -59,6 +59,12 @@ the OAuth tokens separate:
 DEFAULT_YOUTUBE_PROFILE=ksajid505
 YOUTUBE_TOKEN_FILE_KSAJID505=data/auth/youtube-ksajid505-token.json
 YOUTUBE_TOKEN_FILE_NASTYGAMER=data/auth/youtube-nastygamer-token.json
+YTMUSIC_CLIENT_ID=
+YTMUSIC_CLIENT_SECRET=
+YTMUSIC_OAUTH_FILE_KSAJID505=data/auth/ytmusic-ksajid505-oauth.json
+YTMUSIC_OAUTH_FILE_NASTYGAMER=data/auth/ytmusic-nastygamer-oauth.json
+YTMUSIC_BROWSER_FILE_KSAJID505=data/auth/ytmusic-ksajid505-browser.json
+YTMUSIC_BROWSER_FILE_NASTYGAMER=data/auth/ytmusic-nastygamer-browser.json
 ```
 
 For Spotify local OAuth, add this exact redirect URI in the Spotify developer
@@ -104,6 +110,21 @@ Validate one YouTube profile only:
 
 ```powershell
 python main.py --check-youtube-auth --youtube-profile nastygamer
+```
+
+Set up and validate YouTube Music auth for a profile:
+
+```powershell
+python main.py --setup-ytmusic-auth --youtube-profile ksajid505
+python main.py --check-ytmusic-auth --youtube-profile ksajid505
+```
+
+If OAuth succeeds but YouTube Music calls return HTTP 400, use browser-header
+auth instead. Save copied request headers to
+`data/auth/ytmusic-ksajid505-headers.txt`, then run:
+
+```powershell
+python main.py --setup-ytmusic-browser-auth --youtube-profile ksajid505
 ```
 
 Build a YouTube-to-Spotify import plan without adding anything:
@@ -171,6 +192,19 @@ This is intentionally separate from the existing two-way flow. For the music
 account target, Spotify-to-YouTube should use `--include-reverse-imports` so
 tracks originally imported from the primary YouTube account can still land in
 the music YouTube account.
+
+## YouTube Music To YouTube Music
+
+The official YouTube Data API sees regular liked videos. YouTube Music library
+backfills use `ytmusicapi` and separate profile OAuth files:
+
+```powershell
+python main.py --direction ytmusic-to-ytmusic --source-youtube-profile ksajid505 --target-youtube-profile nastygamer --ytmusic-source liked --limit 10000 --plan-only --no-notify
+python main.py --direction ytmusic-to-ytmusic --source-youtube-profile ksajid505 --target-youtube-profile nastygamer --ytmusic-source liked --apply-plan
+```
+
+`--ytmusic-source` can be `liked`, `library`, or `both`. Build a plan first and
+check the source count before applying a large backfill.
 
 ## YouTube To Spotify
 

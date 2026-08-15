@@ -12,6 +12,7 @@ from beatbridge.config import (
     redirect_uri,
     scope,
     youtube_to_youtube_sync_file,
+    ytmusic_to_ytmusic_sync_file,
 )
 from beatbridge.notifier import notify_sync_summary
 from beatbridge.storage import load_json_file
@@ -20,6 +21,16 @@ from beatbridge.youtube_client import authenticate_youtube, get_liked_video_ids
 from beatbridge.youtube_to_youtube import (
     apply_youtube_to_youtube_plan,
     build_youtube_to_youtube_plan,
+)
+from beatbridge.ytmusic_client import (
+    build_ytmusic_client,
+    check_ytmusic_auth,
+    setup_ytmusic_browser_auth,
+    setup_ytmusic_auth,
+)
+from beatbridge.ytmusic_to_ytmusic import (
+    apply_ytmusic_to_ytmusic_plan,
+    build_ytmusic_to_ytmusic_plan,
 )
 
 
@@ -89,6 +100,27 @@ def parse_args(argv=None):
         help="Validate YouTube auth for the selected profile, then exit without syncing.",
     )
     parser.add_argument(
+        "--setup-ytmusic-auth",
+        action="store_true",
+        help="Run YouTube Music OAuth setup for the selected profile, then exit.",
+    )
+    parser.add_argument(
+        "--setup-ytmusic-browser-auth",
+        action="store_true",
+        help="Create YouTube Music browser auth from a profile raw headers file.",
+    )
+    parser.add_argument(
+        "--check-ytmusic-auth",
+        action="store_true",
+        help="Validate YouTube Music auth for the selected profile, then exit.",
+    )
+    parser.add_argument(
+        "--ytmusic-source",
+        choices=("liked", "library", "both"),
+        default="liked",
+        help="YouTube Music source collection for ytmusic-to-ytmusic.",
+    )
+    parser.add_argument(
         "--include-reverse-imports",
         action="store_true",
         help="For Spotify-to-YouTube, include tracks originally imported from YouTube.",
@@ -142,6 +174,24 @@ def main(argv=None):
         check_youtube_auth(youtube, youtube_profile)
         return
 
+    if args.setup_ytmusic_auth:
+        ytmusic = setup_ytmusic_auth(
+            profile=youtube_profile,
+            open_browser=open_browser,
+        )
+        check_ytmusic_auth(ytmusic, youtube_profile)
+        return
+
+    if args.setup_ytmusic_browser_auth:
+        ytmusic = setup_ytmusic_browser_auth(profile=youtube_profile)
+        check_ytmusic_auth(ytmusic, youtube_profile)
+        return
+
+    if args.check_ytmusic_auth:
+        ytmusic = build_ytmusic_client(profile=youtube_profile)
+        check_ytmusic_auth(ytmusic, youtube_profile)
+        return
+
     if args.check_auth:
         spotify = build_spotify_client(open_browser=open_browser)
         youtube = authenticate_youtube(open_browser=open_browser, profile=youtube_profile)
@@ -157,6 +207,16 @@ def main(argv=None):
 
     if direction == SyncDirection.YT_TO_YT and args.apply_plan:
         workflow = apply_youtube_to_youtube(args, open_browser)
+        maybe_notify(build_run_summary(args, [workflow]), args.no_notify)
+        return
+
+    if direction == SyncDirection.YTMUSIC_TO_YTMUSIC and not args.apply_plan:
+        workflow = run_ytmusic_to_ytmusic(args)
+        maybe_notify(build_run_summary(args, [workflow]), args.no_notify)
+        return
+
+    if direction == SyncDirection.YTMUSIC_TO_YTMUSIC and args.apply_plan:
+        workflow = apply_ytmusic_to_ytmusic(args)
         maybe_notify(build_run_summary(args, [workflow]), args.no_notify)
         return
 
@@ -182,7 +242,10 @@ def main(argv=None):
             )
             maybe_notify(build_run_summary(args, [workflow]), args.no_notify)
             return
-        raise ValueError("--apply-plan requires yt-to-spotify, spotify-to-yt, or yt-to-yt")
+        raise ValueError(
+            "--apply-plan requires yt-to-spotify, spotify-to-yt, yt-to-yt, "
+            "or ytmusic-to-ytmusic"
+        )
 
     youtube = authenticate_youtube(open_browser=open_browser, profile=youtube_profile)
     sync_manager = TwoWaySync(youtube, spotify, youtube_profile=youtube_profile)
@@ -352,6 +415,131 @@ def youtube_to_youtube_workflow(
         "processed": processed,
         "planned": planned,
     }
+    if source_items is not None:
+        workflow["source_items"] = source_items
+    if skipped is not None:
+        workflow["skipped"] = skipped
+    return workflow
+
+
+def run_ytmusic_to_ytmusic(args):
+    source_profile, target_profile = selected_youtube_pair(args)
+    sync_cache = load_sync_cache(
+        ytmusic_to_ytmusic_sync_file(
+            source_profile,
+            target_profile,
+            args.ytmusic_source,
+        )
+    )
+    source_ytmusic = build_ytmusic_client(source_profile)
+    target_ytmusic = build_ytmusic_client(target_profile)
+    plan = build_ytmusic_to_ytmusic_plan(
+        source_ytmusic,
+        target_ytmusic,
+        source_profile,
+        target_profile,
+        args.ytmusic_source,
+        sync_cache,
+        limit=args.limit,
+    )
+    if args.plan_only:
+        return ytmusic_workflow(
+            source_profile,
+            target_profile,
+            args.ytmusic_source,
+            dry_run=args.dry_run,
+            plan_only=True,
+            processed=0,
+            planned=plan["summary"].get("pending", 0),
+            source_items=plan["summary"].get("items", 0),
+            skipped=count_ytmusic_skips(plan["summary"]),
+        )
+
+    video_ids = apply_ytmusic_to_ytmusic_plan(
+        target_ytmusic,
+        source_profile,
+        target_profile,
+        args.ytmusic_source,
+        sync_cache,
+        dry_run=args.dry_run,
+    )
+    return ytmusic_workflow(
+        source_profile,
+        target_profile,
+        args.ytmusic_source,
+        dry_run=args.dry_run,
+        plan_only=False,
+        processed=len(video_ids),
+        planned=plan["summary"].get("pending", 0),
+        source_items=plan["summary"].get("items", 0),
+        skipped=count_ytmusic_skips(plan["summary"]),
+    )
+
+
+def apply_ytmusic_to_ytmusic(args):
+    source_profile, target_profile = selected_youtube_pair(args)
+    sync_cache = load_sync_cache(
+        ytmusic_to_ytmusic_sync_file(
+            source_profile,
+            target_profile,
+            args.ytmusic_source,
+        )
+    )
+    target_ytmusic = build_ytmusic_client(target_profile)
+    video_ids = apply_ytmusic_to_ytmusic_plan(
+        target_ytmusic,
+        source_profile,
+        target_profile,
+        args.ytmusic_source,
+        sync_cache,
+        dry_run=args.dry_run,
+    )
+    return ytmusic_workflow(
+        source_profile,
+        target_profile,
+        args.ytmusic_source,
+        dry_run=args.dry_run,
+        plan_only=False,
+        processed=len(video_ids),
+        planned=None,
+        source_items=None,
+        skipped=None,
+    )
+
+
+def count_ytmusic_skips(summary):
+    return (
+        summary.get("duplicates_in_run", 0)
+        + summary.get("missing_video_id", 0)
+        + summary.get("already_synced", 0)
+        + summary.get("already_liked_on_target", 0)
+        + summary.get("blocked", 0)
+    )
+
+
+def ytmusic_workflow(
+    source_profile,
+    target_profile,
+    source_kind,
+    dry_run,
+    plan_only,
+    processed,
+    planned,
+    source_items,
+    skipped,
+):
+    workflow = {
+        "direction": SyncDirection.YTMUSIC_TO_YTMUSIC.value,
+        "label": (
+            f"YouTube Music {source_kind} ({source_profile}) -> "
+            f"YouTube Music ({target_profile})"
+        ),
+        "dry_run": dry_run,
+        "plan_only": plan_only,
+        "processed": processed,
+    }
+    if planned is not None:
+        workflow["planned"] = planned
     if source_items is not None:
         workflow["source_items"] = source_items
     if skipped is not None:
