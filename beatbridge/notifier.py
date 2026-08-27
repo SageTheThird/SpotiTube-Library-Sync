@@ -79,17 +79,15 @@ def format_sync_summary(summary):
                 f"- {label}: would sync {workflow.get('processed', 0)} item(s)"
             )
         else:
-            lines.append(f"- {label}: synced {workflow.get('processed', 0)} item(s)")
+            processed = workflow.get("processed", 0)
+            if processed:
+                lines.append(f"- {label}: synced {processed} item(s)")
+            else:
+                lines.append(f"- {label}: no new items")
 
-        skipped = workflow.get("skipped")
         not_found = workflow.get("not_found")
-        if skipped is not None or not_found is not None:
-            detail = []
-            if skipped is not None:
-                detail.append(f"skipped {skipped}")
-            if not_found is not None:
-                detail.append(f"not found {not_found}")
-            lines[-1] += f" ({', '.join(detail)})"
+        if not_found:
+            lines[-1] += f" ({not_found} unresolved)"
 
     if not workflows:
         lines.append("- No workflow summary was produced.")
